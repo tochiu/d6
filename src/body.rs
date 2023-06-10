@@ -1,6 +1,7 @@
-use crate::{transform::*, raster::SceneTriangle};
-
-use tui::style::Color;
+use crate::{
+    raster::{Color, Triangle},
+    transform::*,
+};
 
 #[derive(Default)]
 pub struct Body {
@@ -11,13 +12,18 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn geometry(&self) -> impl Iterator<Item = SceneTriangle> + '_ {
+    pub fn geometry(&self) -> impl Iterator<Item = Triangle> + '_ {
         BODY_UNIT_GEOMETRY.iter().map(|geometry| {
-            let normal = self.transform.rotation.vector_to_world_space(geometry.normal);
-            SceneTriangle {
+            let normal = self
+                .transform
+                .rotation
+                .vector_to_world_space(geometry.normal);
+            Triangle {
                 normal,
-                points: geometry.points.map(|point| self.transform.point_to_world_space(point * self.half_size)),
-                color: geometry.color
+                points: geometry
+                    .points
+                    .map(|point| self.transform.point_to_world_space(point * self.half_size)),
+                color: geometry.color,
             }
         })
     }
@@ -60,9 +66,9 @@ fn get_separating_plane(r_pos: Vector3, plane: Vector3, box1: &Body, box2: &Body
             + (box2_z_axis * box2.half_size.z).dot(plane).abs();
 }
 
-pub const BODY_UNIT_GEOMETRY: [SceneTriangle; 12] = [
+pub const BODY_UNIT_GEOMETRY: [Triangle; 12] = [
     // Front 0
-    SceneTriangle {
+    Triangle {
         normal: Vector3 {
             x: 0.0,
             y: 0.0,
@@ -85,9 +91,9 @@ pub const BODY_UNIT_GEOMETRY: [SceneTriangle; 12] = [
                 z: 1.0,
             },
         ],
-        color: Color::Rgb(255, 255, 255),
+        color: Color::BLUE,
     },
-    SceneTriangle {
+    Triangle {
         // Front 1
         normal: Vector3 {
             x: 0.0,
@@ -111,9 +117,9 @@ pub const BODY_UNIT_GEOMETRY: [SceneTriangle; 12] = [
                 z: 1.0,
             },
         ],
-        color: Color::Rgb(255, 255, 255),
+        color: Color::BLUE,
     },
-    SceneTriangle {
+    Triangle {
         // Back 0
         normal: Vector3 {
             x: 0.0,
@@ -122,12 +128,12 @@ pub const BODY_UNIT_GEOMETRY: [SceneTriangle; 12] = [
         },
         points: [
             Vector3 {
-                x: 1.000,
+                x: -1.000,
                 y: 1.000,
                 z: -1.0,
             },
             Vector3 {
-                x: -1.000,
+                x: 1.000,
                 y: 1.000,
                 z: -1.0,
             },
@@ -137,9 +143,9 @@ pub const BODY_UNIT_GEOMETRY: [SceneTriangle; 12] = [
                 z: -1.0,
             },
         ],
-        color: Color::Rgb(255, 255, 255),
+        color: Color::RED,
     },
-    SceneTriangle {
+    Triangle {
         // Back 1
         normal: Vector3 {
             x: 0.0,
@@ -147,213 +153,230 @@ pub const BODY_UNIT_GEOMETRY: [SceneTriangle; 12] = [
             z: -1.0,
         },
         points: [
-        Vector3 {
-            x: 1.000,
-            y: 1.000,
-            z: -1.0,
-        },
-        Vector3 {
-            x: -1.000,
-            y: -1.000,
-            z: -1.0,
-        },
-        Vector3 {
-            x: 1.000,
-            y: -1.000,
-            z: -1.0,
-        }],
-        color: Color::Rgb(255, 255, 255),
+            Vector3 {
+                x: -1.000,
+                y: -1.000,
+                z: -1.0,
+            },
+            Vector3 {
+                x: 1.000,
+                y: 1.000,
+                z: -1.0,
+            },
+            Vector3 {
+                x: 1.000,
+                y: -1.000,
+                z: -1.0,
+            },
+        ],
+        color: Color::RED,
     },
-    SceneTriangle {
+    Triangle {
         // Right 0
         normal: Vector3 {
             x: 1.0,
             y: 0.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: 1.0,
-            y: 1.000,
-            z: 1.000,
-        },
-        Vector3 {
-            x: 1.0,
-            y: -1.000,
-            z: 1.000,
-        },
-        Vector3 {
-            x: 1.0,
-            y: -1.000,
-            z: -1.000,
-        }],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: 1.0,
+                y: 1.000,
+                z: 1.000,
+            },
+            Vector3 {
+                x: 1.0,
+                y: -1.000,
+                z: 1.000,
+            },
+            Vector3 {
+                x: 1.0,
+                y: -1.000,
+                z: -1.000,
+            },
+        ],
+        color: Color::GREEN,
     },
-    SceneTriangle {
+    Triangle {
         // Right 1
         normal: Vector3 {
             x: 1.0,
             y: 0.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: 1.0,
-            y: 1.000,
-            z: 1.000,
-        },
-        Vector3 {
-            x: 1.0,
-            y: -1.000,
-            z: -1.000,
-        },
-        Vector3 {
-            x: 1.0,
-            y: 1.000,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: 1.0,
+                y: 1.000,
+                z: 1.000,
+            },
+            Vector3 {
+                x: 1.0,
+                y: -1.000,
+                z: -1.000,
+            },
+            Vector3 {
+                x: 1.0,
+                y: 1.000,
+                z: -1.000,
+            },
+        ],
+        color: Color::GREEN,
     },
-    SceneTriangle {
+    Triangle {
         // Left 0
         normal: Vector3 {
             x: -1.0,
             y: 0.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: -1.0,
-            y: 1.000,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.0,
-            y: -1.000,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.0,
-            y: -1.000,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: -1.0,
+                y: -1.000,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.0,
+                y: 1.000,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.0,
+                y: -1.000,
+                z: -1.000,
+            },
+        ],
+        color: Color::from_rgb(255, 000, 255),
     },
-    SceneTriangle {
+    Triangle {
         // Left 1
         normal: Vector3 {
             x: -1.0,
             y: 0.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: -1.0,
-            y: 1.000,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.0,
-            y: -1.000,
-            z: -1.000,
-        },
-        Vector3 {
-            x: -1.0,
-            y: 1.000,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: -1.0,
+                y: -1.000,
+                z: -1.000,
+            },
+            Vector3 {
+                x: -1.0,
+                y: 1.000,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.0,
+                y: 1.000,
+                z: -1.000,
+            },
+        ],
+        color: Color::from_rgb(255, 000, 255),
     },
-    SceneTriangle {
+    Triangle {
         // Up 0
         normal: Vector3 {
             x: 0.0,
             y: 1.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: 1.000,
-            y: 1.0,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.000,
-            y: 1.0,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.000,
-            y: 1.0,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: -1.000,
+                y: 1.0,
+                z: 1.000,
+            },
+            Vector3 {
+                x: 1.000,
+                y: 1.0,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.000,
+                y: 1.0,
+                z: -1.000,
+            },
+        ],
+        color: Color::WHITE,
     },
-    SceneTriangle {
+    Triangle {
         // Up 1
         normal: Vector3 {
             x: 0.0,
             y: 1.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: 1.000,
-            y: 1.0,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.000,
-            y: 1.0,
-            z: -1.000,
-        },
-        Vector3 {
-            x: 1.000,
-            y: 1.0,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: -1.000,
+                y: 1.0,
+                z: -1.000,
+            },
+            Vector3 {
+                x: 1.000,
+                y: 1.0,
+                z: 1.000,
+            },
+            Vector3 {
+                x: 1.000,
+                y: 1.0,
+                z: -1.000,
+            },
+        ],
+        color: Color::WHITE,
     },
-    SceneTriangle {
+    Triangle {
         // Down 0
         normal: Vector3 {
             x: 0.0,
             y: -1.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: 1.000,
-            y: -1.0,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.000,
-            y: -1.0,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.000,
-            y: -1.0,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: 1.000,
+                y: -1.0,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.000,
+                y: -1.0,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.000,
+                y: -1.0,
+                z: -1.000,
+            },
+        ],
+        color: Color::from_rgb(000, 255, 255),
     },
-    SceneTriangle {
+    Triangle {
         // Down 1
         normal: Vector3 {
             x: 0.0,
             y: -1.0,
             z: 0.0,
         },
-        points: [Vector3 {
-            x: 1.000,
-            y: -1.0,
-            z: 1.000,
-        },
-        Vector3 {
-            x: -1.000,
-            y: -1.0,
-            z: -1.000,
-        },
-        Vector3 {
-            x: 1.000,
-            y: -1.0,
-            z: -1.000,
-        },],
-        color: Color::Rgb(255, 255, 255),
+        points: [
+            Vector3 {
+                x: 1.000,
+                y: -1.0,
+                z: 1.000,
+            },
+            Vector3 {
+                x: -1.000,
+                y: -1.0,
+                z: -1.000,
+            },
+            Vector3 {
+                x: 1.000,
+                y: -1.0,
+                z: -1.000,
+            },
+        ],
+        color: Color::from_rgb(000, 255, 255),
     },
 ];

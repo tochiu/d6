@@ -12,8 +12,6 @@ pub mod test_world {
     use crate::raster::*;
     use crate::transform::*;
 
-    use tui::style::Color;
-
     const FLOOR_BOUND: f64 = 1_000_000.0;
 
     const ANGULAR_VELOCITY: f64 = -2.5;
@@ -22,7 +20,7 @@ pub mod test_world {
 
     pub struct TestWorld {
         pub light: Vector3,
-        pub camera_transform: Transform,
+        // pub camera_transform: Transform,
         pub bodies: Vec<Body>,
         pub is_colliding: bool,
     }
@@ -36,21 +34,21 @@ pub mod test_world {
                     y: -1.0, 
                     z: 0.0 
                 }.unit(),
-                camera_transform: Transform::new(
-                    Vector3 {
-                        x: 0.0,
-                        y: 10.0 + 256.0,
-                        z: 0.0 - 256.0/1.0_f64.to_radians().tan(),
-                    },
-                    Quaternion::from_axis_angle(
-                        Vector3 {
-                            x: 1.0,
-                            y: 0.0,
-                            z: 0.0,
-                        },
-                        1.0_f64.to_radians(),
-                    ),
-                ),
+                // camera_transform: Transform::new(
+                //     Vector3 {
+                //         x: 0.0,
+                //         y: 10.0 + 256.0,
+                //         z: 0.0 - 256.0/1.0_f64.to_radians().tan(),
+                //     },
+                //     Quaternion::from_axis_angle(
+                //         Vector3 {
+                //             x: 1.0,
+                //             y: 0.0,
+                //             z: 0.0,
+                //         },
+                //         1.0_f64.to_radians(),
+                //     ),
+                // ),
                 bodies: vec![
                     Body {
                         transform: Transform::new(
@@ -101,21 +99,15 @@ pub mod test_world {
     }
     
     impl Scene for TestWorld {
-        fn camera_transform(&self) -> &Transform {
-            &self.camera_transform
-        }
-
-        fn update_geometry(&self, buf: &mut Vec<SceneTriangle>) {
-            buf.clear();
-
+        fn update_geometry<T: ViewportProjector>(&self, projector: &mut RasterProjector<'_, T>) {
             let floor_color = if self.is_colliding {
-                Color::Rgb(255, 0, 0)
+                Color::RED
             } else {
-                Color::Rgb(0, 255, 0)
+                Color::GREEN
             };
 
             // green "floor"
-            buf.push(SceneTriangle {
+            projector.project(Triangle {
                 normal: Vector3::Y_AXIS,
                 points: [
                     Vector3::new(FLOOR_BOUND, 0.0, FLOOR_BOUND - FLOOR_BOUND + 1000.0), 
@@ -124,30 +116,42 @@ pub mod test_world {
                 ],
                 color: floor_color
             });
-            buf.push(SceneTriangle {
+            projector.project(Triangle {
                 normal: Vector3::Y_AXIS,
                 points: [
                     Vector3::new(-FLOOR_BOUND, 0.0, -FLOOR_BOUND - FLOOR_BOUND + 1000.0), 
+                    Vector3::new(FLOOR_BOUND, 0.0, FLOOR_BOUND - FLOOR_BOUND + 1000.0),
                     Vector3::new(FLOOR_BOUND, 0.0, -FLOOR_BOUND - FLOOR_BOUND + 1000.0), 
-                    Vector3::new(FLOOR_BOUND, 0.0, FLOOR_BOUND - FLOOR_BOUND + 1000.0)
                 ],
                 color: floor_color
             });
 
+            for body in self.bodies.iter() {
+                body.geometry().for_each(|triangle| {
+                    projector.project(triangle);
+                });
+            }
+
             // bodies
-            buf.extend(
-                self.bodies.iter().flat_map(|body| {
-                    body.geometry().map(|mut geometry| {
-                        let brightness = (0.5*(1.0 - geometry.normal.dot(self.light))).clamp(0.0, 1.0);
-                        geometry.color = Color::Rgb(
-                            (255.0*brightness).round() as u8, 
-                            (255.0*brightness).round() as u8, 
-                            (255.0*brightness).round() as u8
-                        );
-                        geometry
-                    })
-                })
-            );
+            // buf.extend(
+            //     self.bodies.iter().flat_map(|body| {
+            //         body.geometry().map(|mut geometry| {
+            //             // let brightness = (0.5*(1.0 - geometry.normal.dot(self.light))).clamp(0.0, 1.0);
+            //             // geometry.color =
+            //             //  Color::from_rgb(
+            //             //     (255.0*brightness).round() as u8, 
+            //             //     (255.0*brightness).round() as u8, 
+            //             //     (255.0*brightness).round() as u8
+            //             // );
+            //             geometry
+            //         })
+            //     })
+            // );
         }
+        //fn update_geometry(&self, consume: fn(Triangle)) {
+            //buf.clear();
+
+            
+        //}
     }
 }

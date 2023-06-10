@@ -1,176 +1,159 @@
 use crate::transform::*;
 
-use tui::style::Color;
-
-use std::{marker::PhantomData, ops::RangeInclusive};
-
-const SCENE_WORLD_UNITS_PER_PIXEL: f64 = 1.0;
-
-pub type BoxedIterator<'a, T> = Box<dyn Iterator<Item = T> + 'a>;
+use std::ops::RangeInclusive;
 
 pub trait Scene {
-    fn camera_transform(&self) -> &Transform;
-    fn update_geometry(&self, geometry_buffer: &mut Vec<SceneTriangle>);
+    fn update_geometry<T: ViewportProjector>(&self, projector: &mut RasterProjector<'_, T>);
 }
 
 // TODO: Decouple color from triangle in scene (not even sure what the best way to architect computing color)
-pub struct SceneTriangle {
+#[derive(Debug)]
+pub struct Triangle {
     pub points: [Vector3; 3],
     pub normal: Vector3,
     pub color: Color,
 }
 
-pub trait Viewport: Transformable {
-    fn new(transform: Transform, width: f64, height: f64) -> Self;
-    fn project_geometry<'a>(
-        &'a self,
-        geometry: &'a [SceneTriangle],
-    ) -> BoxedIterator<'a, (&'a SceneTriangle, TriangleProjection)>;
-}
-
-#[derive(Clone)]
-pub struct OrthographicCamera {
-    pub transform: Transform,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl OrthographicCamera {
-    fn point_to_projection_space(&self, mut point: Vector3) -> Vector3 {
-        point = self.transform.point_to_local_space(point);
-        point.x = (point.x + 0.5 * self.width) / self.width;
-        point.y = 1.0 - (point.y + 0.5 * self.height) / self.height;
-        point
-    }
-
-    fn are_projection_bounds_within_viewport_bounds(&self, projection_points: &[Vector3]) -> bool {
-        let x0 = projection_points
-            .iter()
-            .fold(f64::MAX, |x0, point| x0.min(point.x));
-        let y0 = projection_points
-            .iter()
-            .fold(f64::MAX, |y0, point| y0.min(point.y));
-        let x1 = projection_points
-            .iter()
-            .fold(f64::MIN, |x1, point| x1.max(point.x));
-        let y1 = projection_points
-            .iter()
-            .fold(f64::MIN, |y1, point| y1.max(point.y));
-
-        x0 < 1.0 && x1 > 0.0 && y0 < 1.0 && y1 > 0.0
-    }
-}
-
-impl Viewport for OrthographicCamera {
-    fn new(transform: Transform, width: f64, height: f64) -> Self {
-        Self {
-            transform,
-            width,
-            height,
-        }
-    }
-
-    fn project_geometry<'a>(
-        &'a self,
-        geometry: &'a [SceneTriangle],
-    ) -> BoxedIterator<'a, (&'a SceneTriangle, TriangleProjection)> {
-        //log::info!("{:?}", self.transform);
-        let (camera_right, camera_up, camera_look) = self.transform.rotation.basis_vectors();
-        Box::new(geometry.iter().filter_map(move |tri: &SceneTriangle| {
-            // Backface culling
-            if tri.normal.dot(camera_look) >= 0.0 {
-                return None;
-            }
-
-            let mut projection_points = tri.points;
-            for point in projection_points.iter_mut() {
-                *point = self.point_to_projection_space(*point);
-            }
-
-            // Cull triangles that are completely off screen
-            if !self.are_projection_bounds_within_viewport_bounds(&projection_points) {
-                return None;
-            }
-
-            // Calculate the distance the plane containing the triangle recedes from the camera plane
-            // when traversing the camera's width and height
-            let projection_distance_change = Vector3 {
-                x: -tri.normal.dot(self.width * camera_right) / tri.normal.dot(camera_look),
-                y: tri.normal.dot(self.height * camera_up) / tri.normal.dot(camera_look),
-                z: 0.0,
-            };
-
-            Some((
-                tri,
-                TriangleProjection {
-                    projection_points,
-                    projection_distance_change,
-                },
-            ))
-        }))
-    }
-}
-
-impl Transformable for OrthographicCamera {
-    fn transform(&self) -> &Transform {
-        &self.transform
-    }
-
-    fn transform_mut(&mut self) -> &mut Transform {
-        &mut self.transform
-    }
-}
-
 #[derive(Debug)]
 pub struct TriangleProjection {
-    pub projection_points: [Vector3; 3],
-    pub projection_distance_change: Vector3,
+    pub points: [Vector3; 3],
 }
 
-pub struct Raster {
-    pub z_buffer: Buffer2D<f64>,
-    pub screen_buffer: Buffer2D<Color>,
-    pub geometry_buffer: Vec<SceneTriangle>,
-    pub horizonal_line_buffer: Vec<(i32, i32)>,
+pub trait Viewport: Transformable  {
+
+    type Projector: ViewportProjector;
+
+    fn projector(&self, screen_width: u16, screen_height: u16) -> Self::Projector;
 }
 
-impl Raster {
+pub trait ViewportProjector {
+    fn prepare_z_compute(&mut self, tri: &Triangle, tri_proj: &TriangleProjection);
+    fn compute_z(&self, x: f64) -> f64;
+    fn set_y(&mut self, y: f64);
+    fn project(&self, tri: Triangle, geometry: &mut Vec<(Triangle, TriangleProjection)>);
+}
+
+pub struct RasterProjector<'a, T: ViewportProjector> {
+    transform: &'a Transform,
+    geometry: &'a mut Vec<(Triangle, TriangleProjection)>,
+    projector: &'a T,
+}
+
+impl<'a, T: ViewportProjector> RasterProjector<'a, T> {
+    // TODO: ensure winding order is correct
+    pub fn project(&mut self, mut tri: Triangle) {
+        tri.points = tri.points.map(|point| self.transform.point_to_local_space(point));
+        tri.normal = self.transform.rotation.vector_to_local_space(tri.normal);
+        self.projector.project(tri, self.geometry);
+    }
+}
+
+pub trait Rasterable {
     fn rasterize(
         &mut self,
         scene: &impl Scene,
-        camera: impl Viewport,
-        screen_width: usize,
-        screen_height: usize,
-    ) {
-        self.z_buffer
-            .clear_and_resize(screen_width, screen_height, f64::INFINITY);
+        viewport: &impl Viewport,
+        screen_buffer: &mut Buffer2D<Color>,
+        screen_width: u16,
+        screen_height: u16,
+    );
 
-        self.screen_buffer
-            .clear_and_resize(screen_width, screen_height, Color::Rgb(0, 0, 0));
+    fn antialias(self, aliasing: u8) -> Antialias<Self> where Self: Sized {
+        Antialias {
+            raster: self,
+            aliasing,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Raster {
+    z_buffer: Buffer2D<f64>,
+    geometry_buffer: Vec<(Triangle, TriangleProjection)>,
+    horizonal_line_buffer: Vec<(i32, i32)>,
+}
+
+impl Rasterable for Raster {
+    fn rasterize(
+        &mut self,
+        scene: &impl Scene,
+        viewport: &impl Viewport,
+        screen_buffer: &mut Buffer2D<Color>,
+        screen_width: u16,
+        screen_height: u16,
+    ) {
+        screen_buffer.clear_and_resize(screen_width as usize, screen_height as usize, Color::default());
+
+        if screen_width == 0 || screen_height == 0 {
+            return;
+        }
+
+        self.geometry_buffer.clear();
+
+        self.z_buffer
+            .clear_and_resize(screen_width as usize, screen_height as usize, f64::INFINITY);
 
         self.horizonal_line_buffer
-            .resize(screen_height, (i32::MAX, i32::MAX));
+            .resize(screen_height as usize, (i32::MAX, i32::MAX));
 
-        scene.update_geometry(&mut self.geometry_buffer);
+        let mut projector = viewport.projector(screen_width, screen_height);
 
-        for (scene_tri, tri_proj) in camera.project_geometry(&self.geometry_buffer) {
-            let mut tri_screen_points = [(0, 0); 3];
+        scene.update_geometry(&mut RasterProjector {
+            transform: viewport.transform(),
+            geometry: &mut self.geometry_buffer,
+            projector: &projector,
+        });
 
-            for (projection_point, screen_point) in tri_proj
-                .projection_points
-                .iter()
-                .zip(tri_screen_points.iter_mut())
+        for (tri, tri_proj) in self.geometry_buffer.iter() {
+            // Backface culling
+            if 
+                (tri_proj.points[0].x - tri_proj.points[1].x) * (tri_proj.points[0].y - tri_proj.points[2].y) - 
+                (tri_proj.points[0].y - tri_proj.points[1].y) * (tri_proj.points[0].x - tri_proj.points[2].x) < 0.0 
             {
-                *screen_point = (
-                    (projection_point.x * screen_width as f64).round() as i32,
-                    (projection_point.y * screen_height as f64).round() as i32,
-                );
+                continue;
             }
 
+            // Cull triangles that are completely off screen
+            {
+                let x0 = tri_proj
+                    .points
+                    .iter()
+                    .fold(f64::MAX, |x0, point| x0.min(point.x));
+                let y0 = tri_proj
+                    .points
+                    .iter()
+                    .fold(f64::MAX, |y0, point| y0.min(point.y));
+                let x1 = tri_proj
+                    .points
+                    .iter()
+                    .fold(f64::MIN, |x1, point| x1.max(point.x));
+                let y1 = tri_proj
+                    .points
+                    .iter()
+                    .fold(f64::MIN, |y1, point| y1.max(point.y));
+                let z1 = tri_proj
+                    .points
+                    .iter()
+                    .fold(f64::MIN, |z1, point| z1.max(point.z));
+
+                if !(z1 > 0.0 && x0 < 1.0 && x1 > 0.0 && y0 < 1.0 && y1 > 0.0) {
+                    continue;
+                }
+            }
+
+            let screen_points = tri_proj
+                .points
+                .map(|point| {
+                    (
+                        (point.x * screen_width as f64).round() as i32,
+                        (point.y * screen_height as f64).round() as i32,
+                    )
+                });
+
             for line in [
-                [&tri_screen_points[0], &tri_screen_points[1]],
-                [&tri_screen_points[1], &tri_screen_points[2]],
-                [&tri_screen_points[2], &tri_screen_points[0]],
+                [&screen_points[0], &screen_points[1]],
+                [&screen_points[1], &screen_points[2]],
+                [&screen_points[2], &screen_points[0]],
             ] {
                 let &(x1, y1) = line[0];
                 let &(x2, y2) = line[1];
@@ -196,32 +179,21 @@ impl Raster {
                 // // }
             }
 
-            let TriangleProjection {
-                projection_points:
-                    [Vector3 {
-                        x: x0,
-                        y: y0,
-                        z: z0,
-                    }, ..],
-                projection_distance_change:
-                    Vector3 {
-                        x: z_dx, y: z_dy, ..
-                    },
-            } = tri_proj;
-
-            let y_min = tri_screen_points
+            let y_min = screen_points
                 .iter()
                 .fold(i32::MAX, |min, &(_, y)| min.min(y))
                 .clamp(0, screen_height.saturating_sub(1) as i32) as usize;
-            let y_max = tri_screen_points
+            let y_max = screen_points
                 .iter()
                 .fold(i32::MIN, |max, &(_, y)| max.max(y))
                 .clamp(0, screen_height.saturating_sub(1) as i32) as usize;
 
+            projector.prepare_z_compute(tri, tri_proj);
+
             for y in y_min..=y_max {
                 let (x_min, x_max) = {
                     let (min, max) = self.horizonal_line_buffer[y];
-                    if min < 0 && max < 0 || min > screen_width as i32 && max > screen_width as i32
+                    if min < 0 && max < 0 || min >= screen_width as i32 && max >= screen_width as i32
                     {
                         continue;
                     }
@@ -231,21 +203,21 @@ impl Raster {
                     )
                 };
 
-                let zy = z0 + ((y as f64 + 0.5) / (screen_height as f64) - y0) * z_dy;
+                projector.set_y((y as f64 + 0.5) / (screen_height as f64));
 
                 let z_slice = self.z_buffer.get_range_mut(y, x_min..=x_max);
-                let pixel_slice = self.screen_buffer.get_range_mut(y, x_min..=x_max);
+                let pixel_slice = screen_buffer.get_range_mut(y, x_min..=x_max);
 
                 for (i, (last_z, pixel)) in
                     z_slice.iter_mut().zip(pixel_slice.iter_mut()).enumerate()
                 {
-                    let z = zy + (((x_min + i) as f64 + 0.5) / (screen_width as f64) - x0) * z_dx;
+                    let z = projector.compute_z(((x_min + i) as f64 + 0.5) / (screen_width as f64));
                     if z > *last_z {
                         continue;
                     }
 
                     *last_z = z;
-                    *pixel = scene_tri.color;
+                    *pixel = tri.color;
                 }
             }
 
@@ -305,94 +277,88 @@ impl Raster {
     // }
 }
 
-impl Default for Raster {
-    fn default() -> Self {
-        Raster {
-            z_buffer: Buffer2D::default(),
-            screen_buffer: Buffer2D {
-                data: vec![Color::Black; 0],
-                width: 0,
-                height: 0,
-            },
-            geometry_buffer: Default::default(),
-            horizonal_line_buffer: Vec::new(),
-        }
-    }
+pub struct Antialias<T: Rasterable> {
+    aliasing: u8,
+    raster: T,
 }
 
-pub struct RasterWidget<'a, S: Scene, V: Viewport> {
-    pub aliasing: usize,
-    pub raster: &'a mut Raster,
-    pub scene: &'a S,
-    pub camera: PhantomData<V>,
-}
-
-impl<'a, S: Scene, V: Viewport> RasterWidget<'a, S, V> {
-    pub fn new(raster: &'a mut Raster, scene: &'a S, aliasing: usize) -> Self {
-        Self {
-            aliasing,
-            raster,
-            scene,
-            camera: PhantomData,
-        }
-    }
-
-    fn sample_color(&self, x: usize, y: usize) -> Color {
-        let sample_size = self.aliasing;
-        let (sr, sg, sb) = self
-            .raster
-            .screen_buffer
-            .area(sample_size * x, sample_size * y, sample_size, sample_size)
-            .flatten()
-            .fold((0_u16, 0_u16, 0_u16), |(sr, sg, sb), color| {
-                let Color::Rgb(r, g, b) = *color else {
-                    unreachable!("Color {:?} is not RGB", color)
-                };
-                (sr + r as u16, sg + g as u16, sb + b as u16)
-            });
-        let sample_area = (sample_size * sample_size) as u16;
-        Color::Rgb(
-            (sr / sample_area) as u8,
-            (sg / sample_area) as u8,
-            (sb / sample_area) as u8,
-        )
-    }
-}
-
-impl<'a, S: Scene, V: Viewport> tui::widgets::Widget for RasterWidget<'a, S, V> {
-    fn render(self, area: tui::layout::Rect, buf: &mut tui::buffer::Buffer) {
-        if area.area() == 0 {
-            return;
-        }
-
-        let camera = V::new(
-            self.scene.camera_transform().clone(),
-            SCENE_WORLD_UNITS_PER_PIXEL * area.width as f64,
-            SCENE_WORLD_UNITS_PER_PIXEL * area.height as f64 * 2.0,
-        );
-
+impl<T: Rasterable> Rasterable for Antialias<T> {
+    fn rasterize(
+        &mut self,
+        scene: &impl Scene,
+        viewport: &impl Viewport,
+        screen_buffer: &mut Buffer2D<Color>,
+        screen_width: u16,
+        screen_height: u16,
+    ) {
         self.raster.rasterize(
-            self.scene,
-            camera,
-            self.aliasing * area.width as usize,
-            self.aliasing * area.height as usize * 2,
+            scene,
+            viewport,
+            screen_buffer,
+            screen_width * self.aliasing as u16,
+            screen_height * self.aliasing as u16,
         );
+        let sample_size = self.aliasing as usize;
 
-        for y in 0..area.height {
-            for x in 0..area.width {
-                let top_color = self.sample_color(x as usize, y as usize * 2);
-                let bottom_color = self.sample_color(x as usize, y as usize * 2 + 1);
-
-                let cell = buf.get_mut(x, y);
-                cell.set_symbol("▄");
-                cell.set_bg(top_color);
-                cell.set_fg(bottom_color);
-            }
-        }
+        screen_buffer.condense(screen_width as usize, screen_height as usize, |buf, x, y| {
+            let (sr, sg, sb) = buf
+                .area(sample_size * x, sample_size * y, sample_size, sample_size)
+                .flatten()
+                .fold((0_u16, 0_u16, 0_u16), |(sr, sg, sb), color| {
+                    let (r, g, b) = (*color).rgb();
+                    (sr + r as u16, sg + g as u16, sb + b as u16)
+                });
+            let sample_area = (sample_size * sample_size) as u16;
+            Color::from_rgb(
+                (sr / sample_area) as u8,
+                (sg / sample_area) as u8,
+                (sb / sample_area) as u8,
+            )
+        })
     }
 }
 
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub struct Color(u32);
+
+impl Color {
+
+    pub const BLACK: Color = Color(0x000000);
+    pub const WHITE: Color = Color(0xFFFFFF);
+    pub const RED: Color = Color(0xFF0000);
+    pub const GREEN: Color = Color(0x00FF00);
+    pub const BLUE: Color = Color(0x0000FF);
+
+    pub const fn new(color: u32) -> Color {
+        Color(color)
+    }
+
+    pub const fn from_rgb(r: u8, g: u8, b: u8) -> Color {
+        Color((r as u32) << 16 | (g as u32) << 8 | b as u32)
+    }
+
+    pub const fn r(self) -> u8 {
+        (self.0 >> 16) as u8
+    }
+
+    pub const fn g(self) -> u8 {
+        (self.0 >> 8) as u8
+    }
+
+    pub const fn b(self) -> u8 {
+        self.0 as u8
+    }
+
+    pub const fn u32(self) -> u32 {
+        self.0
+    }
+
+    pub const fn rgb(self) -> (u8, u8, u8) {
+        (self.r(), self.g(), self.b())
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Buffer2D<T> {
     pub width: usize,
     pub height: usize,
@@ -437,5 +403,20 @@ impl<T> Buffer2D<T> {
         height: usize,
     ) -> impl Iterator<Item = impl Iterator<Item = &T>> {
         (y..y + height).map(move |y| self.get_range(y, x..=x + width - 1).iter())
+    }
+
+    pub fn condense<F>(&mut self, width: usize, height: usize, f: F)
+    where
+        F: Fn(&Buffer2D<T>, usize, usize) -> T,
+    {
+        for y in 0..height {
+            for x in 0..width {
+                self.data[y * width + x] = f(&self, x, y);
+            }
+        }
+
+        self.width = width;
+        self.height = height;
+        self.data.truncate(width * height);
     }
 }

@@ -122,7 +122,133 @@ impl std::ops::MulAssign for Quaternion {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Vector2 {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Vector2 {
+
+    pub const ZERO: Vector2 = Vector2 { x: 0.0, y: 0.0 };
+
+    pub const X_AXIS: Vector2 = Vector2 { x: 1.0, y: 0.0 };
+    pub const Y_AXIS: Vector2 = Vector2 { x: 0.0, y: 1.0 };
+
+    pub const fn new(x: f64, y: f64) -> Vector2 {
+        Vector2 { x, y }
+    }
+
+    pub fn dot(self, rhs: Vector2) -> f64 {
+        self.x * rhs.x + self.y * rhs.y
+    }
+
+    pub fn magnitude(self) -> f64 {
+        self.dot(self).sqrt()
+    }
+
+    pub fn unit(self) -> Vector2 {
+        let magnitude = self.magnitude();
+        Vector2 {
+            x: self.x / magnitude,
+            y: self.y / magnitude,
+        }
+    }
+
+    pub fn inverse(self) -> Vector2 {
+        Vector2 {
+            x: -self.x,
+            y: -self.y
+        }
+    }
+
+    pub fn lerp(self, rhs: Vector2, t: f64) -> Vector2 {
+        Vector2 {
+            x: self.x * (1.0 - t) + rhs.x * t,
+            y: self.y * (1.0 - t) + rhs.y * t,
+        }
+    }
+}
+
+impl std::ops::Mul<f64> for Vector2 {
+    type Output = Vector2;
+
+    fn mul(self, rhs: f64) -> Vector2 {
+        Vector2 {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
+    }
+}
+
+impl std::ops::Mul<Vector2> for f64 {
+    type Output = Vector2;
+
+    fn mul(self, rhs: Vector2) -> Vector2 {
+        Vector2 {
+            x: self * rhs.x,
+            y: self * rhs.y
+        }
+    }
+}
+
+impl std::ops::Add for Vector2 {
+    type Output = Vector2;
+
+    fn add(self, rhs: Vector2) -> Vector2 {
+        Vector2 {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl std::ops::AddAssign for Vector2 {
+    fn add_assign(&mut self, rhs: Vector2) {
+        *self = *self + rhs;
+    }
+}
+
+impl std::ops::Sub for Vector2 {
+    type Output = Vector2;
+
+    fn sub(self, rhs: Vector2) -> Vector2 {
+        Vector2 {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
+impl std::ops::SubAssign for Vector2 {
+    fn sub_assign(&mut self, rhs: Vector2) {
+        *self = *self - rhs;
+    }
+}
+
+impl std::ops::Mul for Vector2 {
+    type Output = Vector2;
+
+    fn mul(self, rhs: Vector2) -> Vector2 {
+        Vector2 {
+            x: self.x * rhs.x,
+            y: self.y * rhs.y,
+        }
+    }
+}
+
+impl std::ops::Neg for Vector2 {
+    type Output = Vector2;
+
+    fn neg(self) -> Self::Output {
+        Vector2 {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Vector3 {
     pub x: f64,
     pub y: f64,
@@ -130,6 +256,8 @@ pub struct Vector3 {
 }
 
 impl Vector3 {
+
+    pub const ZERO: Vector3 = Vector3 { x: 0.0, y: 0.0, z: 0.0 };
 
     pub const X_AXIS: Vector3 = Vector3 { x: 1.0, y: 0.0, z: 0.0 };
     pub const Y_AXIS: Vector3 = Vector3 { x: 0.0, y: 1.0, z: 0.0 };
@@ -169,6 +297,14 @@ impl Vector3 {
             x: -self.x,
             y: -self.y,
             z: -self.z,
+        }
+    }
+
+    pub fn lerp(self, rhs: Vector3, t: f64) -> Vector3 {
+        Vector3 {
+            x: self.x * (1.0 - t) + rhs.x * t,
+            y: self.y * (1.0 - t) + rhs.y * t,
+            z: self.z * (1.0 - t) + rhs.z * t,
         }
     }
 }
@@ -241,6 +377,18 @@ impl std::ops::Mul for Vector3 {
             x: self.x * rhs.x,
             y: self.y * rhs.y,
             z: self.z * rhs.z,
+        }
+    }
+}
+
+impl std::ops::Neg for Vector3 {
+    type Output = Vector3;
+
+    fn neg(self) -> Self::Output {
+        Vector3 {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
         }
     }
 }
